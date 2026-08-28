@@ -60,15 +60,17 @@ Výsledná aplikácia bude v priečinku `release`. Na cieľovom počítači už 
 
 ### Windows bez Pythonu
 
-Pre počítač používateľa sa nepoužíva `install_windows.bat`, pretože ten slúži na vytvorenie aplikácie a vyžaduje Python. Windows balík bez Pythonu sa vytvorí cez GitHub Actions:
+Pre počítač používateľa sa nepoužíva `install_windows.bat`, pretože ten slúži na vytvorenie aplikácie a vyžaduje Python. Najjednoduchší výsledok je súbor `PolozkyPreOberon-Setup.exe`:
 
 1. Na GitHube otvor repozitár a kartu **Actions**.
 2. Vyber **Build Windows application**.
 3. Klikni **Run workflow** a potvrď spustenie.
 4. Po dokončení otvor hotový beh workflow a v časti **Artifacts** stiahni `PolozkyPreOberon-Windows`.
-5. ZIP rozbaľ na cieľovom počítači a spusti `PolozkyPreOberon.exe` dvojklikom.
+5. Z balíka vyber `PolozkyPreOberon-Setup.exe`.
+6. Dvakrát klikni na `PolozkyPreOberon-Setup.exe` a prejdi inštaláciou.
+7. Inštalátor vytvorí aplikáciu aj odkaz na ploche. Python nebude potrebný.
 
-Na cieľovom počítači nebude potrebný Python, PySide6 ani VS Code. Pri každej novej verzii sa workflow spustí znova a vytvorí nový ZIP.
+Na cieľovom počítači nebude potrebný Python, PySide6 ani VS Code. Pri každej novej verzii workflow vytvorí nový jednoklikový inštalátor.
 
 Aktualizácie sa najprv vykonajú v zdrojovom projekte a následným opätovným spustením `install_windows.bat` sa vytvorí nová verzia `.exe`. Automatické ukladanie zmien zdrojového kódu rieši Git alebo synchronizácia projektu, nie samotná nainštalovaná aplikácia.
 

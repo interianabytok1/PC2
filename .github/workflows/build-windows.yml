@@ -28,8 +28,18 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path release/PolozkyPreOberon/PolozkyPreOberon.exe -DestinationPath release/PolozkyPreOberon-Windows.zip
 
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Create one-click installer
+        shell: cmd
+        run: '"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss'
+
       - name: Upload Windows package
         uses: actions/upload-artifact@v4
         with:
           name: PolozkyPreOberon-Windows
-          path: release/PolozkyPreOberon-Windows.zip
+          path: |
+            release/PolozkyPreOberon-Windows.zip
+            release/PolozkyPreOberon-Setup.exe
