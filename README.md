@@ -60,7 +60,7 @@ Výsledná aplikácia bude v priečinku `release`. Na cieľovom počítači už 
 
 ### Windows bez Pythonu
 
-Najjednoduchší výsledok pre Windows 10 a 11 je jeden inštalátor `PolozkyPreOberon-Setup.exe` alebo jeden prenosný súbor `PolozkyPreOberon.exe`.
+Najjednoduchší výsledok pre Windows 7, 10 a 11 je jeden inštalátor `PolozkyPreOberon-Setup.exe` alebo jeden prenosný súbor `PolozkyPreOberon.exe`.
 
 1. Na GitHube otvor repozitár a kartu **Actions**.
 2. Vyber **Build Windows application**.
@@ -73,6 +73,8 @@ Najjednoduchší výsledok pre Windows 10 a 11 je jeden inštalátor `PolozkyPre
 Ak otvárate portable ZIP, najprv ho celý rozbaľte do priečinka a až potom spustite `PolozkyPreOberon.exe`. Nespúšťajte ho priamo z WinRARu alebo z náhľadu ZIP archívu, pretože aplikácia potrebuje aj sprievodné súbory z priečinka `_internal`.
 
 Na cieľovom počítači nebude potrebný Python ani VS Code. Pri každej novej verzii workflow vytvorí nový jednoklikový inštalátor aj novú prenosnú verziu.
+
+Aktuálny Windows build je zámerne vytváraný cez Python 3.8 a starší PyInstaller, aby bol kompatibilnejší aj s Windows 7.
 
 Aktualizácie sa najprv vykonajú v zdrojovom projekte a následným opätovným spustením `install_windows.bat` sa vytvorí nová verzia `.exe`. Automatické ukladanie zmien zdrojového kódu rieši Git alebo synchronizácia projektu, nie samotná nainštalovaná aplikácia.
 
