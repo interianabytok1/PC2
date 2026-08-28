@@ -58,6 +58,18 @@ chmod +x build_linux.sh
 
 Výsledná aplikácia bude v priečinku `release`. Na cieľovom počítači už nebude potrebné inštalovať Python ani PySide6. Balík treba vytvoriť samostatne pre Windows, Linux a macOS; PyInstaller nevytvára jeden univerzálny súbor pre všetky operačné systémy.
 
+### Windows bez Pythonu
+
+Pre počítač používateľa sa nepoužíva `install_windows.bat`, pretože ten slúži na vytvorenie aplikácie a vyžaduje Python. Windows balík bez Pythonu sa vytvorí cez GitHub Actions:
+
+1. Na GitHube otvor repozitár a kartu **Actions**.
+2. Vyber **Build Windows application**.
+3. Klikni **Run workflow** a potvrď spustenie.
+4. Po dokončení otvor hotový beh workflow a v časti **Artifacts** stiahni `PolozkyPreOberon-Windows`.
+5. ZIP rozbaľ na cieľovom počítači a spusti `PolozkyPreOberon.exe` dvojklikom.
+
+Na cieľovom počítači nebude potrebný Python, PySide6 ani VS Code. Pri každej novej verzii sa workflow spustí znova a vytvorí nový ZIP.
+
 Aktualizácie sa najprv vykonajú v zdrojovom projekte a následným opätovným spustením `install_windows.bat` sa vytvorí nová verzia `.exe`. Automatické ukladanie zmien zdrojového kódu rieši Git alebo synchronizácia projektu, nie samotná nainštalovaná aplikácia.
 
 ## Ďalšie kroky
