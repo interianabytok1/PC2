@@ -1,6 +1,6 @@
 # Extrahovanie položiek pre import do OBERON-u
 
-Desktopová aplikácia na získanie vybraných položiek z webových stránok dodávateľov alebo z HTML kódu a ich prípravu na import do systému OBERON.
+Lokálna webová aplikácia na získanie vybraných položiek z webových stránok dodávateľov alebo z HTML kódu a ich prípravu na import do systému OBERON.
 
 ## Schválený princíp
 
@@ -18,9 +18,9 @@ Oba vstupy budú spracované do HTML podľa šablóny OBERON-u. Výstup CSV a Ex
 
 ## Stav projektu
 
-Aktuálne je pripravený základ desktopového rozhrania, výber oboch vstupných režimov a bezpečné spúšťanie webových požiadaviek mimo hlavného okna. Spracovanie HTML šablóny OBERON doplníme po dodaní šablóny.
+Aktuálne je pripravená lokálna webová aplikácia spúšťaná jedným `.exe` súborom. Po štarte otvorí formulár v predvolenom prehliadači a beží lokálne na počítači používateľa.
 
-## Spustenie
+## Spustenie vo vývoji
 
 ```bash
 python3 -m venv .venv
@@ -56,21 +56,23 @@ chmod +x build_linux.sh
 ./build_linux.sh
 ```
 
-Výsledná aplikácia bude v priečinku `release`. Na cieľovom počítači už nebude potrebné inštalovať Python ani PySide6. Balík treba vytvoriť samostatne pre Windows, Linux a macOS; PyInstaller nevytvára jeden univerzálny súbor pre všetky operačné systémy.
+Výsledná aplikácia bude v priečinku `release`. Na cieľovom počítači už nebude potrebné inštalovať Python. Balík treba vytvoriť samostatne pre Windows, Linux a macOS; PyInstaller nevytvára jeden univerzálny súbor pre všetky operačné systémy.
 
 ### Windows bez Pythonu
 
-Pre počítač používateľa sa nepoužíva `install_windows.bat`, pretože ten slúži na vytvorenie aplikácie a vyžaduje Python. Najjednoduchší výsledok je súbor `PolozkyPreOberon-Setup.exe`:
+Najjednoduchší výsledok pre Windows 10 a 11 je jeden inštalátor `PolozkyPreOberon-Setup.exe` alebo jeden prenosný súbor `PolozkyPreOberon.exe`.
 
 1. Na GitHube otvor repozitár a kartu **Actions**.
 2. Vyber **Build Windows application**.
 3. Klikni **Run workflow** a potvrď spustenie.
 4. Po dokončení otvor hotový beh workflow a v časti **Artifacts** stiahni `PolozkyPreOberon-Windows`.
-5. Z balíka vyber `PolozkyPreOberon-Setup.exe`.
-6. Dvakrát klikni na `PolozkyPreOberon-Setup.exe` a prejdi inštaláciou.
-7. Inštalátor vytvorí aplikáciu aj odkaz na ploche. Python nebude potrebný.
+5. Z balíka vyber `PolozkyPreOberon-Setup.exe` pre klasickú inštaláciu alebo `PolozkyPreOberon.exe` pre prenosnú verziu.
+6. Dvakrát klikni na zvolený súbor.
+7. Aplikácia otvorí rozhranie v prehliadači. Python nebude potrebný.
 
-Na cieľovom počítači nebude potrebný Python, PySide6 ani VS Code. Pri každej novej verzii workflow vytvorí nový jednoklikový inštalátor.
+Ak otvárate portable ZIP, najprv ho celý rozbaľte do priečinka a až potom spustite `PolozkyPreOberon.exe`. Nespúšťajte ho priamo z WinRARu alebo z náhľadu ZIP archívu, pretože aplikácia potrebuje aj sprievodné súbory z priečinka `_internal`.
+
+Na cieľovom počítači nebude potrebný Python ani VS Code. Pri každej novej verzii workflow vytvorí nový jednoklikový inštalátor aj novú prenosnú verziu.
 
 Aktualizácie sa najprv vykonajú v zdrojovom projekte a následným opätovným spustením `install_windows.bat` sa vytvorí nová verzia `.exe`. Automatické ukladanie zmien zdrojového kódu rieši Git alebo synchronizácia projektu, nie samotná nainštalovaná aplikácia.
 

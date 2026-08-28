@@ -26,7 +26,7 @@ jobs:
 
       - name: Create portable ZIP
         shell: pwsh
-        run: Compress-Archive -Path release/PolozkyPreOberon/PolozkyPreOberon.exe -DestinationPath release/PolozkyPreOberon-Windows.zip
+        run: Compress-Archive -Path release/PolozkyPreOberon.exe -DestinationPath release/PolozkyPreOberon-Windows.zip
 
       - name: Install Inno Setup
         shell: pwsh

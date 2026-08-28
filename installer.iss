@@ -11,7 +11,7 @@ PrivilegesRequired=lowest
 UninstallDisplayName=Polozky pre OBERON
 
 [Files]
-Source: "release\PolozkyPreOberon\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "release\PolozkyPreOberon.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autodesktop}\Polozky pre OBERON"; Filename: "{app}\PolozkyPreOberon.exe"; WorkingDir: "{app}"

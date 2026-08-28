@@ -1,4 +1,4 @@
-"""Build a portable desktop executable with PyInstaller."""
+"""Build a single-file local web application executable with PyInstaller."""
 
 from PyInstaller.__main__ import run
 
@@ -8,6 +8,7 @@ if __name__ == "__main__":
         "app.py",
         "--name=PolozkyPreOberon",
         "--windowed",
+        "--onefile",
         "--clean",
         "--noconfirm",
         "--distpath=release",

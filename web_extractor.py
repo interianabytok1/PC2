@@ -67,3 +67,12 @@ def extract_page(url: str, terms: list[str], timeout: float = 15.0) -> Extractio
     searchable_text = f"{parser.title} {parser.description} {parser.text}".lower()
     matched_terms = tuple(term for term in terms if term.lower() in searchable_text)
     return ExtractionResult(url, parser.title or url, parser.description, matched_terms)
+
+
+def extract_html_document(document: str, source_label: str, terms: list[str]) -> ExtractionResult:
+    """Parse pasted HTML code and report matching terms."""
+    parser = _PageParser()
+    parser.feed(document)
+    searchable_text = f"{parser.title} {parser.description} {parser.text}".lower()
+    matched_terms = tuple(term for term in terms if term.lower() in searchable_text)
+    return ExtractionResult(source_label, parser.title or source_label, parser.description, matched_terms)
