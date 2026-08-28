@@ -1,17 +1,17 @@
-"""Local web application entry point for the OBERON item extraction tool."""
+"""Simple desktop application for OBERON item extraction."""
 
 from __future__ import annotations
 
 import html
 import json
+import queue
 import re
 import threading
-import webbrowser
-from dataclasses import dataclass, field
-from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import tkinter as tk
+from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import parse_qs
+from tkinter import filedialog, messagebox, ttk
+from tkinter.scrolledtext import ScrolledText
 
 from web_extractor import ExtractionResult, extract_html_document, extract_page
 
@@ -21,33 +21,32 @@ PROFILES_PATH = Path.home() / ".polozky-oberon" / "suppliers.json"
 
 
 @dataclass
-class AppState:
-    profiles: dict[str, dict[str, str]] = field(default_factory=dict)
-    latest_export_html: str = ""
-    latest_message: str = "Pripravené na spracovanie vstupu."
+class TaskResult:
+  export_html: str
+  message: str
 
 
 def load_profiles() -> dict[str, dict[str, str]]:
-    try:
-        return json.loads(PROFILES_PATH.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        return {}
+  try:
+    return json.loads(PROFILES_PATH.read_text(encoding="utf-8"))
+  except (FileNotFoundError, json.JSONDecodeError, OSError):
+    return {}
 
 
 def save_profiles(profiles: dict[str, dict[str, str]]) -> None:
-    PROFILES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    PROFILES_PATH.write_text(json.dumps(profiles, ensure_ascii=False, indent=2), encoding="utf-8")
+  PROFILES_PATH.parent.mkdir(parents=True, exist_ok=True)
+  PROFILES_PATH.write_text(json.dumps(profiles, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def parse_terms(raw_text: str) -> list[str]:
-    return [item.strip() for item in re.split(r"[,\n;]+", raw_text) if item.strip()]
+  return [item.strip() for item in re.split(r"[,\n;]+", raw_text) if item.strip()]
 
 
 def build_export_document(result: ExtractionResult, product_ids: list[str], keywords: list[str]) -> str:
-    matches = ", ".join(result.matched_terms) if result.matched_terms else "bez zhody"
-    ids = ", ".join(product_ids) if product_ids else "neuvedené"
-    terms = ", ".join(keywords) if keywords else "neuvedené"
-    return f"""<!doctype html>
+  matches = ", ".join(result.matched_terms) if result.matched_terms else "bez zhody"
+  ids = ", ".join(product_ids) if product_ids else "neuvedené"
+  terms = ", ".join(keywords) if keywords else "neuvedené"
+  return f"""<!doctype html>
 <html lang="sk">
 <head>
   <meta charset="utf-8">
@@ -65,241 +64,277 @@ def build_export_document(result: ExtractionResult, product_ids: list[str], keyw
 """
 
 
-def render_page(state: AppState, form: dict[str, str] | None = None) -> bytes:
-    data = {
-        "input_mode": "web",
-        "supplier": "",
-        "url": "",
-        "product_ids": "",
-        "keywords": "",
-        "html_code": "",
+class App:
+  def __init__(self, root: tk.Tk) -> None:
+    self.root = root
+    self.root.title(APP_TITLE)
+    self.root.geometry("980x760")
+    self.root.minsize(860, 640)
+
+    self.profiles = load_profiles()
+    self.latest_export_html = ""
+    self.result_queue: queue.Queue[tuple[str, object]] = queue.Queue()
+    self.worker_thread: threading.Thread | None = None
+
+    self.input_mode = tk.StringVar(value="web")
+    self.supplier_var = tk.StringVar()
+    self.supplier_name_var = tk.StringVar()
+    self.url_var = tk.StringVar()
+    self.status_var = tk.StringVar(value="Pripravené na spracovanie vstupu.")
+
+    self._build_ui()
+    self._refresh_profiles()
+    self._toggle_input_mode()
+    self.root.after(150, self._poll_queue)
+
+  def _build_ui(self) -> None:
+    style = ttk.Style()
+    style.configure("TLabel", padding=2)
+    style.configure("Header.TLabel", font=("Segoe UI", 18, "bold"))
+    style.configure("Panel.TLabelframe", padding=12)
+
+    wrapper = ttk.Frame(self.root, padding=18)
+    wrapper.pack(fill=tk.BOTH, expand=True)
+    wrapper.columnconfigure(0, weight=1)
+    wrapper.rowconfigure(3, weight=1)
+
+    ttk.Label(wrapper, text="Extrahovanie položiek pre OBERON", style="Header.TLabel").grid(
+      row=0, column=0, sticky="w"
+    )
+    ttk.Label(
+      wrapper,
+      text="Jednoduchá desktop aplikácia: zadáš zdroj, položky a uložíš HTML výstup.",
+    ).grid(row=1, column=0, sticky="w", pady=(4, 12))
+
+    source_frame = ttk.LabelFrame(wrapper, text="1. Zdroj údajov", style="Panel.TLabelframe")
+    source_frame.grid(row=2, column=0, sticky="ew")
+    source_frame.columnconfigure(1, weight=1)
+    source_frame.columnconfigure(3, weight=1)
+
+    ttk.Label(source_frame, text="Typ vstupu").grid(row=0, column=0, sticky="w")
+    self.mode_combo = ttk.Combobox(
+      source_frame,
+      textvariable=self.input_mode,
+      values=["web", "html"],
+      state="readonly",
+      width=22,
+    )
+    self.mode_combo.grid(row=0, column=1, sticky="ew", padx=(8, 12), pady=4)
+    self.mode_combo.bind("<<ComboboxSelected>>", lambda _event: self._toggle_input_mode())
+
+    ttk.Label(source_frame, text="Profil dodávateľa").grid(row=0, column=2, sticky="w")
+    self.supplier_combo = ttk.Combobox(source_frame, textvariable=self.supplier_var, state="readonly")
+    self.supplier_combo.grid(row=0, column=3, sticky="ew", pady=4)
+    self.supplier_combo.bind("<<ComboboxSelected>>", lambda _event: self._load_selected_profile())
+
+    ttk.Label(source_frame, text="Názov profilu").grid(row=1, column=0, sticky="w")
+    ttk.Entry(source_frame, textvariable=self.supplier_name_var).grid(
+      row=1, column=1, sticky="ew", padx=(8, 12), pady=4
+    )
+
+    self.url_label = ttk.Label(source_frame, text="Adresa stránky")
+    self.url_label.grid(row=1, column=2, sticky="w")
+    self.url_entry = ttk.Entry(source_frame, textvariable=self.url_var)
+    self.url_entry.grid(row=1, column=3, sticky="ew", pady=4)
+
+    self.html_label = ttk.Label(source_frame, text="HTML kód")
+    self.html_text = ScrolledText(source_frame, wrap=tk.WORD, height=8)
+
+    filter_frame = ttk.LabelFrame(wrapper, text="2. Položky na spracovanie", style="Panel.TLabelframe")
+    filter_frame.grid(row=3, column=0, sticky="nsew", pady=(14, 0))
+    filter_frame.columnconfigure(0, weight=1)
+    filter_frame.columnconfigure(1, weight=1)
+    filter_frame.rowconfigure(1, weight=1)
+
+    ttk.Label(filter_frame, text="ID položiek").grid(row=0, column=0, sticky="w")
+    ttk.Label(filter_frame, text="Kľúčové slová").grid(row=0, column=1, sticky="w")
+
+    self.product_ids_text = ScrolledText(filter_frame, wrap=tk.WORD, height=12)
+    self.product_ids_text.grid(row=1, column=0, sticky="nsew", padx=(0, 8), pady=4)
+    self.product_ids_text.insert("1.0", "ABC-100\nABC-101")
+
+    self.keywords_text = ScrolledText(filter_frame, wrap=tk.WORD, height=12)
+    self.keywords_text.grid(row=1, column=1, sticky="nsew", padx=(8, 0), pady=4)
+    self.keywords_text.insert("1.0", "úchytka\ndrez")
+
+    output_frame = ttk.LabelFrame(wrapper, text="3. Výstup", style="Panel.TLabelframe")
+    output_frame.grid(row=4, column=0, sticky="ew", pady=(14, 0))
+    ttk.Label(output_frame, text="Aktuálne sa vytvára HTML výstup. CSV a Excel doplníme neskôr.").pack(
+      anchor="w"
+    )
+
+    actions = ttk.Frame(wrapper)
+    actions.grid(row=5, column=0, sticky="ew", pady=(14, 0))
+    for index in range(4):
+      actions.columnconfigure(index, weight=1)
+
+    self.run_button = ttk.Button(actions, text="Spustiť spracovanie", command=self._start_processing)
+    self.run_button.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+
+    ttk.Button(actions, text="Uložiť profil", command=self._save_profile).grid(
+      row=0, column=1, sticky="ew", padx=8
+    )
+    ttk.Button(actions, text="Načítať HTML súbor", command=self._load_html_file).grid(
+      row=0, column=2, sticky="ew", padx=8
+    )
+
+    self.export_button = ttk.Button(actions, text="Uložiť HTML výstup", command=self._save_output_html)
+    self.export_button.grid(row=0, column=3, sticky="ew", padx=(8, 0))
+    self.export_button.state(["disabled"])
+
+    status_bar = ttk.Label(wrapper, textvariable=self.status_var, relief=tk.SUNKEN, anchor="w")
+    status_bar.grid(row=6, column=0, sticky="ew", pady=(14, 0))
+
+  def _refresh_profiles(self) -> None:
+    profile_names = ["Nový dodávateľ", *sorted(self.profiles.keys())]
+    self.supplier_combo.configure(values=profile_names)
+    self.supplier_combo.current(0)
+
+  def _toggle_input_mode(self) -> None:
+    is_html = self.input_mode.get() == "html"
+    if is_html:
+      self.url_label.grid_remove()
+      self.url_entry.grid_remove()
+      self.html_label.grid(row=2, column=0, sticky="nw", pady=(8, 4))
+      self.html_text.grid(row=2, column=1, columnspan=3, sticky="nsew", pady=(8, 4))
+      self.supplier_combo.state(["disabled"])
+    else:
+      self.html_label.grid_remove()
+      self.html_text.grid_remove()
+      self.url_label.grid()
+      self.url_entry.grid()
+      self.supplier_combo.state(["!disabled"])
+
+  def _load_selected_profile(self) -> None:
+    name = self.supplier_var.get()
+    if name in {"", "Nový dodávateľ"}:
+      return
+    profile = self.profiles.get(name, {})
+    self.supplier_name_var.set(name)
+    self.url_var.set(profile.get("url", ""))
+    self._replace_text(self.product_ids_text, profile.get("product_ids", ""))
+    self._replace_text(self.keywords_text, profile.get("keywords", ""))
+
+  def _save_profile(self) -> None:
+    supplier_name = self.supplier_name_var.get().strip()
+    url = self.url_var.get().strip()
+    if not supplier_name:
+      messagebox.showwarning(APP_TITLE, "Zadajte názov profilu.")
+      return
+    if self.input_mode.get() == "web" and not url:
+      messagebox.showwarning(APP_TITLE, "Pri webovom režime zadajte adresu stránky.")
+      return
+    self.profiles[supplier_name] = {
+      "url": url,
+      "product_ids": self.product_ids_text.get("1.0", tk.END).strip(),
+      "keywords": self.keywords_text.get("1.0", tk.END).strip(),
     }
-    if form:
-        data.update(form)
+    save_profiles(self.profiles)
+    self._refresh_profiles()
+    self.supplier_var.set(supplier_name)
+    self.status_var.set(f"Profil '{supplier_name}' bol uložený.")
 
-    profile_options = ['<option value="">Vyberte profil</option>']
-    for name in sorted(state.profiles):
-        selected = " selected" if data["supplier"] == name else ""
-        profile_options.append(f'<option value="{html.escape(name)}"{selected}>{html.escape(name)}</option>')
+  def _load_html_file(self) -> None:
+    file_path = filedialog.askopenfilename(
+      title="Vyberte HTML súbor",
+      filetypes=[("HTML files", "*.html;*.htm"), ("All files", "*.*")],
+    )
+    if not file_path:
+      return
+    content = Path(file_path).read_text(encoding="utf-8", errors="replace")
+    self.input_mode.set("html")
+    self._toggle_input_mode()
+    self._replace_text(self.html_text, content)
+    self.status_var.set(f"HTML súbor načítaný: {file_path}")
 
-    result_block = ""
-    if state.latest_export_html:
-        result_block = f"""
-        <section class="panel result-panel">
-          <h2>Výsledok</h2>
-          <p>{html.escape(state.latest_message)}</p>
-          <p><a class="button secondary" href="/download/latest.html">Stiahnuť HTML výstup</a></p>
-        </section>
-        """
+  def _start_processing(self) -> None:
+    if self.worker_thread and self.worker_thread.is_alive():
+      self.status_var.set("Spracovanie už prebieha.")
+      return
 
-    page = f"""<!doctype html>
-<html lang="sk">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{APP_TITLE}</title>
-  <style>
-    :root {{ color-scheme: light; --bg: #f3efe6; --panel: #fffdfa; --line: #d1c7b8; --text: #213032; --muted: #617073; --accent: #1d6b67; --accent-2: #dd8b3c; }}
-    * {{ box-sizing: border-box; }}
-    body {{ margin: 0; font-family: Segoe UI, Tahoma, sans-serif; background: radial-gradient(circle at top, #fff9ef, var(--bg) 45%); color: var(--text); }}
-    .wrap {{ max-width: 980px; margin: 0 auto; padding: 28px 18px 40px; }}
-    h1 {{ margin: 0 0 8px; font-size: 32px; }}
-    .lead {{ margin: 0 0 24px; color: var(--muted); }}
-    .panel {{ background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 18px; box-shadow: 0 10px 30px rgba(38, 50, 56, 0.06); }}
-    .grid {{ display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }}
-    label {{ display: block; margin-bottom: 6px; font-weight: 600; }}
-    input, select, textarea {{ width: 100%; border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 10px 12px; font: inherit; color: var(--text); }}
-    textarea {{ min-height: 110px; resize: vertical; }}
-    .actions {{ display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }}
-    .button {{ display: inline-block; border: none; border-radius: 10px; padding: 11px 16px; background: var(--accent); color: #fff; font-weight: 700; cursor: pointer; text-decoration: none; }}
-    .button.secondary {{ background: #e7ddce; color: var(--text); }}
-    .note {{ color: var(--muted); font-size: 14px; }}
-    .message {{ padding: 12px 14px; border-radius: 10px; background: #eef6f4; border: 1px solid #c8e0db; margin-bottom: 18px; }}
-    .hidden {{ display: none; }}
-    @media (max-width: 640px) {{ h1 {{ font-size: 26px; }} .wrap {{ padding: 20px 14px 32px; }} }}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <h1>Extrahovanie položiek pre OBERON</h1>
-    <p class="lead">Aplikácia beží lokálne v prehliadači, ale spúšťa sa jedným .exe súborom.</p>
+    payload = {
+      "mode": self.input_mode.get(),
+      "url": self.url_var.get().strip(),
+      "html_code": self.html_text.get("1.0", tk.END).strip(),
+      "product_ids": parse_terms(self.product_ids_text.get("1.0", tk.END)),
+      "keywords": parse_terms(self.keywords_text.get("1.0", tk.END)),
+    }
 
-    <div class="message">{html.escape(state.latest_message)}</div>
+    if payload["mode"] == "web" and not payload["url"]:
+      messagebox.showwarning(APP_TITLE, "Zadajte adresu stránky dodávateľa.")
+      return
+    if payload["mode"] == "html" and not payload["html_code"]:
+      messagebox.showwarning(APP_TITLE, "Vložte HTML kód alebo načítajte HTML súbor.")
+      return
+    if not payload["product_ids"] and not payload["keywords"]:
+      messagebox.showwarning(APP_TITLE, "Zadajte aspoň jedno ID položky alebo kľúčové slovo.")
+      return
 
-    <form method="post" action="/run" class="panel">
-      <div class="grid">
-        <div>
-          <label for="input_mode">Typ vstupu</label>
-          <select id="input_mode" name="input_mode" onchange="toggleMode()">
-            <option value="web"{' selected' if data['input_mode'] == 'web' else ''}>Webová stránka</option>
-            <option value="html"{' selected' if data['input_mode'] == 'html' else ''}>HTML kód / HTML súbor</option>
-          </select>
-        </div>
-        <div id="profile-group">
-          <label for="supplier">Profil dodávateľa</label>
-          <select id="supplier" name="supplier">{''.join(profile_options)}</select>
-        </div>
-      </div>
+    self.run_button.state(["disabled"])
+    self.status_var.set("Spracovanie prebieha...")
+    self.worker_thread = threading.Thread(target=self._run_processing, args=(payload,), daemon=True)
+    self.worker_thread.start()
 
-      <div class="grid">
-        <div id="url-group">
-          <label for="url">Adresa stránky</label>
-          <input id="url" name="url" value="{html.escape(data['url'])}" placeholder="https://www.example.sk">
-        </div>
-        <div>
-          <label for="supplier_name">Názov profilu</label>
-          <input id="supplier_name" name="supplier_name" value="{html.escape(data['supplier'])}" placeholder="napr. Demos">
-        </div>
-      </div>
+  def _run_processing(self, payload: dict[str, object]) -> None:
+    try:
+      product_ids = list(payload["product_ids"])
+      keywords = list(payload["keywords"])
+      terms = keywords + product_ids
+      if payload["mode"] == "html":
+        result = extract_html_document(str(payload["html_code"]), "Lokálny HTML vstup", terms)
+      else:
+        result = extract_page(str(payload["url"]), terms)
+      export_html = build_export_document(result, product_ids, keywords)
+      matches = ", ".join(result.matched_terms) if result.matched_terms else "žiadne zhody"
+      self.result_queue.put(("success", TaskResult(export_html, f"Hotovo: {result.title} | {matches}")))
+    except Exception as error:
+      self.result_queue.put(("error", str(error)))
 
-      <div id="html-group" class="{'hidden' if data['input_mode'] != 'html' else ''}">
-        <label for="html_code">HTML kód</label>
-        <textarea id="html_code" name="html_code" placeholder="Sem vložte HTML kód stránky">{html.escape(data['html_code'])}</textarea>
-      </div>
+  def _poll_queue(self) -> None:
+    try:
+      while True:
+        status, payload = self.result_queue.get_nowait()
+        if status == "success":
+          result = payload
+          assert isinstance(result, TaskResult)
+          self.latest_export_html = result.export_html
+          self.status_var.set(result.message)
+          self.export_button.state(["!disabled"])
+        else:
+          self.status_var.set(f"Spracovanie zlyhalo: {payload}")
+          messagebox.showerror(APP_TITLE, f"Spracovanie zlyhalo:\n{payload}")
+        self.run_button.state(["!disabled"])
+    except queue.Empty:
+      pass
+    self.root.after(150, self._poll_queue)
 
-      <div class="grid">
-        <div>
-          <label for="product_ids">ID položiek</label>
-          <textarea id="product_ids" name="product_ids" placeholder="ABC-100&#10;ABC-101">{html.escape(data['product_ids'])}</textarea>
-        </div>
-        <div>
-          <label for="keywords">Kľúčové slová</label>
-          <textarea id="keywords" name="keywords" placeholder="úchytka&#10;drez">{html.escape(data['keywords'])}</textarea>
-        </div>
-      </div>
+  def _save_output_html(self) -> None:
+    if not self.latest_export_html:
+      messagebox.showinfo(APP_TITLE, "Zatiaľ neexistuje žiadny výstup na uloženie.")
+      return
+    file_path = filedialog.asksaveasfilename(
+      title="Uložiť HTML výstup",
+      defaultextension=".html",
+      initialfile="oberon-export.html",
+      filetypes=[("HTML files", "*.html"), ("All files", "*.*")],
+    )
+    if not file_path:
+      return
+    Path(file_path).write_text(self.latest_export_html, encoding="utf-8")
+    self.status_var.set(f"HTML výstup uložený: {file_path}")
 
-      <p class="note">Výstup aktuálne vytvára HTML súbor. CSV a Excel doplníme neskôr.</p>
-
-      <div class="actions">
-        <button class="button" type="submit">Spustiť spracovanie</button>
-        <button class="button secondary" type="submit" formaction="/save-profile">Uložiť profil</button>
-        <a class="button secondary" href="/download/latest.html">Stiahnuť posledný HTML výstup</a>
-        <button class="button secondary" type="submit" formaction="/shutdown">Ukončiť aplikáciu</button>
-      </div>
-    </form>
-
-    {result_block}
-  </div>
-  <script>
-    function toggleMode() {{
-      var mode = document.getElementById('input_mode').value;
-      document.getElementById('html-group').className = mode === 'html' ? '' : 'hidden';
-      document.getElementById('url-group').className = mode === 'web' ? '' : 'hidden';
-      document.getElementById('profile-group').className = mode === 'web' ? '' : 'hidden';
-    }}
-    toggleMode();
-  </script>
-</body>
-</html>
-"""
-    return page.encode("utf-8")
-
-
-class AppHandler(BaseHTTPRequestHandler):
-    state: AppState
-
-    def do_GET(self) -> None:
-        if self.path == "/":
-            self._send_html(render_page(self.state))
-            return
-        if self.path == "/download/latest.html":
-            if not self.state.latest_export_html:
-                self._send_html(render_page(self.state), status=HTTPStatus.NOT_FOUND)
-                return
-            payload = self.state.latest_export_html.encode("utf-8")
-            self.send_response(HTTPStatus.OK)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Disposition", 'attachment; filename="oberon-export.html"')
-            self.send_header("Content-Length", str(len(payload)))
-            self.end_headers()
-            self.wfile.write(payload)
-            return
-        self.send_error(HTTPStatus.NOT_FOUND)
-
-    def do_POST(self) -> None:
-        form = self._read_form()
-        if self.path == "/save-profile":
-            self._save_profile(form)
-            return
-        if self.path == "/run":
-            self._run_extraction(form)
-            return
-        if self.path == "/shutdown":
-            self.state.latest_message = "Aplikácia sa ukončuje. Toto okno môžete zavrieť."
-            self._send_html(render_page(self.state))
-            threading.Thread(target=self.server.shutdown, daemon=True).start()
-            return
-        self.send_error(HTTPStatus.NOT_FOUND)
-
-    def log_message(self, format: str, *args: object) -> None:
-        return
-
-    def _read_form(self) -> dict[str, str]:
-        length = int(self.headers.get("Content-Length", "0"))
-        body = self.rfile.read(length).decode("utf-8")
-        parsed = parse_qs(body, keep_blank_values=True)
-        return {key: values[0] for key, values in parsed.items()}
-
-    def _save_profile(self, form: dict[str, str]) -> None:
-        supplier_name = form.get("supplier_name", "").strip()
-        url = form.get("url", "").strip()
-        if not supplier_name or not url:
-            self.state.latest_message = "Na uloženie profilu treba názov profilu a adresu stránky."
-            self._send_html(render_page(self.state, form), status=HTTPStatus.BAD_REQUEST)
-            return
-        self.state.profiles[supplier_name] = {
-            "url": url,
-            "keywords": form.get("keywords", ""),
-            "product_ids": form.get("product_ids", ""),
-        }
-        save_profiles(self.state.profiles)
-        form["supplier"] = supplier_name
-        self.state.latest_message = f"Profil '{supplier_name}' bol uložený."
-        self._send_html(render_page(self.state, form))
-
-    def _run_extraction(self, form: dict[str, str]) -> None:
-        input_mode = form.get("input_mode", "web")
-        keywords = parse_terms(form.get("keywords", ""))
-        product_ids = parse_terms(form.get("product_ids", ""))
-        terms = keywords + product_ids
-        try:
-            if input_mode == "html":
-                html_code = form.get("html_code", "").strip()
-                if not html_code:
-                    raise ValueError("Pri HTML režime vložte HTML kód.")
-                result = extract_html_document(html_code, "Lokálny HTML vstup", terms)
-            else:
-                url = form.get("url", "").strip()
-                if not url:
-                    raise ValueError("Zadajte adresu stránky dodávateľa.")
-                result = extract_page(url, terms)
-            self.state.latest_export_html = build_export_document(result, product_ids, keywords)
-            match_text = ", ".join(result.matched_terms) if result.matched_terms else "žiadne zhody"
-            self.state.latest_message = f"Spracovanie úspešné: {result.title} | {match_text}"
-            self._send_html(render_page(self.state, form))
-        except Exception as error:
-            self.state.latest_message = f"Spracovanie zlyhalo: {error}"
-            self._send_html(render_page(self.state, form), status=HTTPStatus.BAD_REQUEST)
-
-    def _send_html(self, payload: bytes, status: HTTPStatus = HTTPStatus.OK) -> None:
-        self.send_response(status)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(payload)))
-        self.end_headers()
-        self.wfile.write(payload)
+  @staticmethod
+  def _replace_text(widget: ScrolledText, value: str) -> None:
+    widget.delete("1.0", tk.END)
+    widget.insert("1.0", value)
 
 
 def main() -> int:
-    state = AppState(profiles=load_profiles())
-    handler = type("BoundAppHandler", (AppHandler,), {"state": state})
-    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    url = f"http://127.0.0.1:{server.server_port}/"
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    webbrowser.open(url)
-    server.serve_forever()
-    server.server_close()
-    return 0
+  root = tk.Tk()
+  App(root)
+  root.mainloop()
+  return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+  raise SystemExit(main())

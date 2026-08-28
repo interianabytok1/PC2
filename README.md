@@ -1,6 +1,6 @@
 # Extrahovanie položiek pre import do OBERON-u
 
-Lokálna webová aplikácia na získanie vybraných položiek z webových stránok dodávateľov alebo z HTML kódu a ich prípravu na import do systému OBERON.
+Jednoduchá desktop aplikácia na získanie vybraných položiek z webových stránok dodávateľov alebo z HTML kódu a ich prípravu na import do systému OBERON.
 
 ## Schválený princíp
 
@@ -18,7 +18,7 @@ Oba vstupy budú spracované do HTML podľa šablóny OBERON-u. Výstup CSV a Ex
 
 ## Stav projektu
 
-Aktuálne je pripravená lokálna webová aplikácia spúšťaná jedným `.exe` súborom. Po štarte otvorí formulár v predvolenom prehliadači a beží lokálne na počítači používateľa.
+Aktuálne je pripravená jednoduchá desktop aplikácia spúšťaná jedným `.exe` súborom. Po štarte otvorí jedno okno aplikácie bez prehliadača a bez lokálneho servera.
 
 ## Spustenie vo vývoji
 
@@ -68,7 +68,7 @@ Najjednoduchší výsledok pre Windows 10 a 11 je jeden inštalátor `PolozkyPre
 4. Po dokončení otvor hotový beh workflow a v časti **Artifacts** stiahni `PolozkyPreOberon-Windows`.
 5. Z balíka vyber `PolozkyPreOberon-Setup.exe` pre klasickú inštaláciu alebo `PolozkyPreOberon.exe` pre prenosnú verziu.
 6. Dvakrát klikni na zvolený súbor.
-7. Aplikácia otvorí rozhranie v prehliadači. Python nebude potrebný.
+7. Aplikácia otvorí svoje vlastné okno. Python nebude potrebný.
 
 Ak otvárate portable ZIP, najprv ho celý rozbaľte do priečinka a až potom spustite `PolozkyPreOberon.exe`. Nespúšťajte ho priamo z WinRARu alebo z náhľadu ZIP archívu, pretože aplikácia potrebuje aj sprievodné súbory z priečinka `_internal`.
 
